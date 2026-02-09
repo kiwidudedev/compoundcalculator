@@ -1,0 +1,15 @@
+export const colors = {
+  background: '#F6F1EA',
+  surface: '#F3EEE6',
+  textPrimary: '#1F1F1F',
+  textSecondary: '#6B6B6B',
+  butterYellow: '#F3D7A3',
+  powderBlue: '#CFE0F3',
+  softPeach: '#F2B27A',
+  lavender: '#DCC8F0',
+  chartLine: '#1F1F1F',
+  chartFillStart: 'rgba(242, 178, 122, 0.35)',
+  chartFillEnd: 'rgba(243, 215, 163, 0.05)',
+  chartGrid: 'rgba(31, 31, 31, 0.08)',
+  shadow: 'rgba(50, 40, 30, 0.16)',
+};

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { COLORS, FONT_FAMILY } from '../lib/constants';
+import { colors } from '../src/theme/colors';
+import { typography } from '../src/theme/typography';
 
 type KeypadKey = '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '.' | 'DEL';
 
@@ -14,13 +15,19 @@ type KeypadProps = {
   fontSize?: number;
 };
 
-export const Keypad = ({ onKeyPress, keyHeight = 64, gap = 12, marginTop = 10, fontSize = 22 }: KeypadProps) => {
+export const Keypad = ({
+  onKeyPress,
+  keyHeight = 64,
+  gap = 12,
+  marginTop = 10,
+  fontSize = 20,
+}: KeypadProps) => {
   return (
-    <View style={[styles.grid, { marginTop }]}>
+    <View style={[styles.grid, { marginTop, columnGap: gap, rowGap: gap }]}> 
       {keys.map((key) => (
         <Pressable
           key={key}
-          style={[styles.key, { height: keyHeight, marginBottom: gap }]}
+          style={[styles.key, { height: keyHeight }]}
           onPress={() => onKeyPress(key)}
         >
           <Text style={[styles.keyText, { fontSize }]}>{key}</Text>
@@ -39,14 +46,17 @@ const styles = StyleSheet.create({
   key: {
     width: '31%',
     borderRadius: 18,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.14)',
+    backgroundColor: '#F7F0E7',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: colors.shadow,
+    shadowOpacity: 1,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   keyText: {
-    color: COLORS.textPrimary,
-    fontFamily: FONT_FAMILY,
+    color: colors.textPrimary,
+    fontFamily: typography.families.semibold,
   },
 });

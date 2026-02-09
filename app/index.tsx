@@ -1,31 +1,25 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
-} from 'react-native';
+import React, { useMemo, useRef, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import { StatusBar } from 'expo-status-bar';
 import { BottomSheet } from '../components/BottomSheet';
-import { Chart } from '../components/Chart';
-import { Glass } from '../components/Glass';
 import { Keypad } from '../components/Keypad';
 import { Segmented } from '../components/Segmented';
-import { COLORS, DEFAULTS, FONT_FAMILY } from '../lib/constants';
+import { DEFAULTS } from '../lib/constants';
 import { formatCurrency, formatCurrencyInput, formatPercent, parseCurrencyInput } from '../lib/format';
 import { Frequency, SimulationParams, simulateGrowth } from '../lib/simulate';
+import { MetricTile } from '../src/components/MetricTile';
+import { ProjectionChart } from '../src/components/ProjectionChart';
+import { SurfaceCard } from '../src/components/SurfaceCard';
+import { colors } from '../src/theme/colors';
+import { typography } from '../src/theme/typography';
 
 type ActiveField = 'initial' | 'apy' | 'years' | 'amount';
 
 type KeypadKey = '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '.' | 'DEL';
 
 const frequencyLabel: Record<Frequency, string> = {
-  weekly: 'Week',
-  monthly: 'Month',
+  weekly: 'Weekly',
+  monthly: 'Monthly',
 };
 
 const clampApy = (value: number) => Math.min(25, Math.max(0, value));
@@ -68,7 +62,7 @@ const parseApyInput = (raw: string, fallback: number) => {
   return clampApy(parsed);
 };
 
-  const parseYearsInput = (raw: string, fallback: number) => {
+const parseYearsInput = (raw: string, fallback: number) => {
   if (!raw.trim()) {
     return fallback;
   }
@@ -118,42 +112,25 @@ const normalizeDraftToParams = (
 export default function Home() {
   const [committedParams, setCommittedParams] = useState<SimulationParams>(DEFAULTS);
   const [draftParams, setDraftParams] = useState<SimulationParams>(DEFAULTS);
-  const [selectedYear, setSelectedYear] = useState<number | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [draftApyText, setDraftApyText] = useState(DEFAULTS.apy.toFixed(2));
   const [draftYearsText, setDraftYearsText] = useState(String(DEFAULTS.durationYears));
-  const [draftInitialText, setDraftInitialText] = useState(
-    String(DEFAULTS.initialPrincipal),
-  );
+  const [draftInitialText, setDraftInitialText] = useState(String(DEFAULTS.initialPrincipal));
   const [draftAmountText, setDraftAmountText] = useState(String(DEFAULTS.contributionAmount));
   const [activeField, setActiveField] = useState<ActiveField>('amount');
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
-  const topPadding = 40;
-  const availableH = height - topPadding - insets.bottom;
-  const scale = availableH < 720 ? 0.88 : availableH < 780 ? 0.92 : 1;
-  const metrics = useMemo(
-    () => ({
-      scale,
-      pad: Math.round(18 * scale),
-      gap: Math.round(12 * scale),
-      sectionGap: Math.round(14 * scale),
-      chipH: Math.round(34 * scale),
-      keyH: Math.round(62 * scale),
-      keyGap: Math.round(12 * scale),
-      footerPad: Math.round(14 * scale),
-    }),
-    [scale],
-  );
-  const fontAdjust = scale <= 0.88 ? -2 : scale < 1 ? -1 : 0;
+  const keypadHeight = Math.max(44, Math.min(56, Math.round(height * 0.07)));
+  const sheetScrollRef = useRef<ScrollView>(null);
 
   const data = useMemo(() => simulateGrowth(committedParams), [committedParams]);
+  const chartData = useMemo(
+    () => data.slice(1).map((point) => ({ x: point.yearIndex, y: point.totalBalanceToDate })),
+    [data],
+  );
   const finalPoint = data[data.length - 1];
-  useEffect(() => {
-    if (selectedYear !== null && data.length > 0 && selectedYear > data.length - 1) {
-      setSelectedYear(data.length - 1);
-    }
-  }, [data.length, selectedYear]);
+  const totalContributed = finalPoint?.totalAddedToDate ?? 0;
+  const totalEarned = finalPoint?.interestEarnedToDate ?? 0;
 
   const openModal = () => {
     setDraftParams(committedParams);
@@ -181,13 +158,6 @@ export default function Home() {
     setCommittedParams(nextParams);
     setModalVisible(false);
   };
-
-  const summaryLine =
-    committedParams.contributionMode === 'recurring'
-      ? `${formatCurrency(committedParams.contributionAmount)} Every ${
-          frequencyLabel[committedParams.frequency]
-        }`
-      : `${formatCurrency(committedParams.contributionAmount)} One-Off`;
 
   const handleKeypadPress = (key: KeypadKey) => {
     if (activeField === 'years' && key === '.') {
@@ -225,224 +195,129 @@ export default function Home() {
     setDraftAmountText((prev) => updateValue(prev, normalizeAmountInput));
   };
 
-  const sheetMaxHeight = Math.min(height * 0.88, 760);
-  const simulatePadY = Math.max(12, Math.round(14 * scale));
-  const footerHeight = simulatePadY * 2 + 20;
-  const contentPaddingBottom = footerHeight + insets.bottom + 12;
+  const handleSelectField = (field: ActiveField) => {
+    setActiveField(field);
+  };
+
+  const contributionLabel =
+    committedParams.contributionMode === 'recurring'
+      ? `${frequencyLabel[committedParams.frequency]} contributions`
+      : 'One-off contribution';
 
   return (
-    <LinearGradient
-      colors={[COLORS.backgroundTop, COLORS.backgroundBottom]}
-      style={styles.background}
-    >
-      <StatusBar style="light" />
+    <View style={[styles.root, { paddingBottom: insets.bottom }]}>
       <SafeAreaView style={styles.safe}>
-        <Pressable style={styles.apyPill} onPress={openModal}>
-          <Text style={styles.apyText}>{formatPercent(committedParams.apy, 2)} APY</Text>
-        </Pressable>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          <SurfaceCard style={styles.heroCard}>
+            <View style={styles.heroHeader}>
+              <Text style={styles.heroLabel}>Projected Balance</Text>
+              <View style={styles.heroChip}>
+                <Text style={styles.heroChipText}>{committedParams.durationYears}Y</Text>
+              </View>
+            </View>
+            <Text style={styles.heroValue}>{formatCurrency(finalPoint.totalBalanceToDate)}</Text>
+            <Text style={styles.heroSub}>in {committedParams.durationYears} years</Text>
+          </SurfaceCard>
 
-        <Text style={styles.balance}>{formatCurrency(finalPoint.totalBalanceToDate)}</Text>
-        <Text style={styles.subtitle}>
-          {formatCurrency(finalPoint.interestEarnedToDate)} Earned in {committedParams.durationYears}{' '}
-          Years
-        </Text>
+          <SurfaceCard style={styles.chartCard}>
+            <Text style={styles.chartTitle}>Projection</Text>
+            <ProjectionChart data={chartData} />
+          </SurfaceCard>
 
-        <Glass style={styles.chartCard}>
-          <Chart data={data} selectedYear={selectedYear} onSelectYear={setSelectedYear} />
-        </Glass>
-
-        <Glass style={styles.bottomSummary}>
-          <View>
-            <Text style={styles.summaryPrimary}>{summaryLine}</Text>
-            <Text style={styles.summarySecondary}>For {committedParams.durationYears} Years</Text>
+          <View style={styles.tileRow}>
+            <MetricTile
+              label={contributionLabel}
+              value={formatCurrency(committedParams.contributionAmount)}
+              tint={colors.butterYellow}
+            />
+            <View style={styles.tileSpacer} />
+            <MetricTile
+              label="Total contributed"
+              value={formatCurrency(totalContributed)}
+              tint={colors.powderBlue}
+            />
           </View>
-          <Pressable style={styles.editButton} onPress={openModal}>
-            <Text style={styles.editText}>Edit Simulation</Text>
-          </Pressable>
-        </Glass>
+
+          <View style={styles.tileRow}>
+            <MetricTile
+              label="Total interest"
+              value={formatCurrency(totalEarned)}
+              tint={colors.lavender}
+            />
+            <View style={styles.tileSpacer} />
+            <MetricTile
+              label="APY"
+              value={formatPercent(committedParams.apy, 2)}
+              tint={colors.softPeach}
+            />
+          </View>
+
+          <View style={styles.actionRow}>
+            <Pressable
+              onPress={openModal}
+              style={[styles.actionTile, styles.actionTileMain]}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
+              <Text style={styles.actionTitle}>Edit Simulation</Text>
+              <Text style={styles.actionSub}>Update inputs and recalculate</Text>
+            </Pressable>
+            <Pressable
+              onPress={openModal}
+              style={[styles.actionTile, styles.actionTileSmall]}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
+              <Text style={styles.actionPlus}>+</Text>
+            </Pressable>
+          </View>
+        </ScrollView>
       </SafeAreaView>
 
-      <BottomSheet
-        visible={modalVisible}
-        onClose={closeModal}
-        maxHeight={sheetMaxHeight}
-        style={{ padding: metrics.pad }}
-      >
-        <View style={[styles.sheetBody, { maxHeight: sheetMaxHeight }]}>
+      <BottomSheet visible={modalVisible} onClose={closeModal}>
+        <View style={styles.sheetWrapper}>
           <ScrollView
+            ref={sheetScrollRef}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
-            contentContainerStyle={[
-              styles.sheetContent,
-              { paddingBottom: contentPaddingBottom },
-            ]}
+            style={styles.sheetScroll}
+            contentContainerStyle={styles.sheetContent}
           >
-            <View style={[styles.sheetHeader, { marginBottom: metrics.gap }]}>
-              <Text style={[styles.sheetTitle, { fontSize: 18 + fontAdjust }]}>Add Money</Text>
-              <Pressable onPress={closeModal}>
-                <View
-                  style={[
-                    styles.sheetClose,
-                    { width: Math.round(30 * scale), height: Math.round(30 * scale) },
-                  ]}
-                >
-                  <Text style={[styles.closeText, { fontSize: 14 + fontAdjust }]}>X</Text>
-                </View>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>Edit Simulation</Text>
+              <Pressable onPress={closeModal} style={styles.sheetClose}>
+                <Text style={styles.sheetCloseText}>X</Text>
               </Pressable>
             </View>
 
-            <Text
-              style={[
-                styles.sectionLabel,
-                {
-                  marginTop: Math.max(4, Math.round(metrics.gap * 0.5)),
-                  marginBottom: Math.max(4, Math.round(metrics.gap * 0.5)),
-                },
-              ]}
-            >
-              INTEREST RATE
-            </Text>
+            <Text style={styles.sheetLabel}>APY</Text>
             <Pressable
-              style={[
-                styles.rateRow,
-                { paddingHorizontal: Math.round(14 * scale), paddingVertical: Math.round(10 * scale) },
-                activeField === 'apy' && styles.activeField,
-              ]}
-              onPress={() => setActiveField('apy')}
+              style={[styles.sheetInput, activeField === 'apy' && styles.sheetInputActive]}
+              onPress={() => handleSelectField('apy')}
             >
-              <Text style={[styles.rateInputText, { fontSize: 22 + fontAdjust }]}>
-                {draftApyText || '0'}
-              </Text>
-              <Text style={[styles.rateSuffix, { fontSize: 14 + fontAdjust }]}>% APY</Text>
+              <Text style={styles.sheetInputValue}>{draftApyText || '0'}</Text>
             </Pressable>
-            <View style={[styles.rateChips, { marginTop: metrics.gap, marginBottom: metrics.gap }]}>
-              {[4, 6, 8, 10].map((preset) => (
-                <Pressable
-                  key={preset}
-                  style={[
-                    styles.rateChip,
-                    {
-                      height: metrics.chipH,
-                      paddingHorizontal: Math.round(12 * scale),
-                      marginRight: metrics.gap,
-                    },
-                  ]}
-                  onPress={() => {
-                    setActiveField('apy');
-                    setDraftApyText(preset.toFixed(2));
-                    setDraftParams((prev) => ({ ...prev, apy: preset }));
-                  }}
-                >
-                  <Text style={[styles.rateChipText, { fontSize: 13 + fontAdjust }]}>{preset}%</Text>
-                </Pressable>
-              ))}
-            </View>
 
-            <Text
-              style={[
-                styles.sectionLabel,
-                {
-                  marginTop: metrics.sectionGap,
-                  marginBottom: Math.max(4, Math.round(metrics.gap * 0.5)),
-                },
-              ]}
-            >
-              YEARS
-            </Text>
+            <Text style={styles.sheetLabel}>Years</Text>
             <Pressable
-              style={[
-                styles.rateRow,
-                { paddingHorizontal: Math.round(14 * scale), paddingVertical: Math.round(10 * scale) },
-                activeField === 'years' && styles.activeField,
-              ]}
-              onPress={() => setActiveField('years')}
+              style={[styles.sheetInput, activeField === 'years' && styles.sheetInputActive]}
+              onPress={() => handleSelectField('years')}
             >
-              <Text style={[styles.rateInputText, { fontSize: 22 + fontAdjust }]}>
-                {draftYearsText || '0'}
-              </Text>
-              <Text style={[styles.rateSuffix, { fontSize: 14 + fontAdjust }]}>Years</Text>
+              <Text style={styles.sheetInputValue}>{draftYearsText || '0'}</Text>
             </Pressable>
-            <View style={[styles.rateChips, { marginTop: metrics.gap, marginBottom: metrics.gap }]}>
-              {[5, 10, 20, 30, 40].map((preset) => (
-                <Pressable
-                  key={preset}
-                  style={[
-                    styles.rateChip,
-                    {
-                      height: metrics.chipH,
-                      paddingHorizontal: Math.round(12 * scale),
-                      marginRight: metrics.gap,
-                    },
-                  ]}
-                  onPress={() => {
-                    setActiveField('years');
-                    setDraftYearsText(String(preset));
-                    setDraftParams((prev) => ({ ...prev, durationYears: preset }));
-                  }}
-                >
-                  <Text style={[styles.rateChipText, { fontSize: 13 + fontAdjust }]}>{preset}</Text>
-                </Pressable>
-              ))}
-            </View>
 
-            <Text
-              style={[
-                styles.sectionLabel,
-                {
-                  marginTop: metrics.sectionGap,
-                  marginBottom: Math.max(4, Math.round(metrics.gap * 0.5)),
-                },
-              ]}
-            >
-              INITIAL
-            </Text>
+            <Text style={styles.sheetLabel}>Initial</Text>
             <Pressable
-              style={[
-                styles.amountDisplayWrap,
-                activeField === 'initial' && styles.activeField,
-              ]}
-              onPress={() => setActiveField('initial')}
+              style={[styles.sheetInput, activeField === 'initial' && styles.sheetInputActive]}
+              onPress={() => handleSelectField('initial')}
             >
-              <Text style={[styles.amountDisplay, { fontSize: Math.max(30, 34 + fontAdjust) }]}>
-                {formatCurrencyInput(draftInitialText)}
-              </Text>
+              <Text style={styles.sheetInputValue}>{formatCurrencyInput(draftInitialText)}</Text>
             </Pressable>
-            <View style={[styles.rateChips, { marginTop: metrics.gap, marginBottom: metrics.gap }]}>
-              {[0, 1000, 5000, 10000, 25000].map((preset) => (
-                <Pressable
-                  key={preset}
-                  style={[
-                    styles.rateChip,
-                    {
-                      height: metrics.chipH,
-                      paddingHorizontal: Math.round(12 * scale),
-                      marginRight: metrics.gap,
-                    },
-                  ]}
-                  onPress={() => {
-                    setActiveField('initial');
-                    setDraftInitialText(String(preset));
-                    setDraftParams((prev) => ({ ...prev, initialPrincipal: preset }));
-                  }}
-                >
-                  <Text style={[styles.rateChipText, { fontSize: 13 + fontAdjust }]}>
-                    ${preset >= 1000 ? `${preset / 1000}k` : preset}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
 
+            <Text style={styles.sheetLabel}>Contribution</Text>
             <Pressable
-              style={[
-                styles.amountDisplayWrap,
-                { marginTop: metrics.sectionGap },
-                activeField === 'amount' && styles.activeField,
-              ]}
-              onPress={() => setActiveField('amount')}
+              style={[styles.sheetInput, activeField === 'amount' && styles.sheetInputActive]}
+              onPress={() => handleSelectField('amount')}
             >
-              <Text style={[styles.amountDisplay, { fontSize: Math.max(32, 36 + fontAdjust) }]}>
-                {formatCurrencyInput(draftAmountText)}
-              </Text>
+              <Text style={styles.sheetInputValue}>{formatCurrencyInput(draftAmountText)}</Text>
             </Pressable>
 
             <Segmented
@@ -451,275 +326,308 @@ export default function Home() {
                 { label: 'Recurring', value: 'recurring' },
               ]}
               value={draftParams.contributionMode}
-              onChange={(value) =>
-                setDraftParams((prev) => ({ ...prev, contributionMode: value }))
-              }
-              containerStyle={{
-                marginTop: metrics.sectionGap,
-                padding: Math.round(6 * scale),
-                borderRadius: Math.round(18 * scale),
-              }}
-              optionStyle={{
-                paddingVertical: Math.round(10 * scale),
-                borderRadius: Math.round(14 * scale),
-              }}
-              labelStyle={{ fontSize: 14 + fontAdjust }}
+              onChange={(value) => setDraftParams((prev) => ({ ...prev, contributionMode: value }))}
             />
 
             {draftParams.contributionMode === 'recurring' && (
-              <View style={[styles.frequencyRow, { marginTop: metrics.gap }]}>
-                {(['weekly', 'monthly'] as Frequency[]).map((freq) => {
-                  const active = draftParams.frequency === freq;
-                  return (
-                    <Pressable
-                      key={freq}
-                      style={[
-                        styles.frequencyButton,
-                        {
-                          paddingVertical: Math.round(10 * scale),
-                          borderRadius: Math.round(16 * scale),
-                          marginHorizontal: Math.round(4 * scale),
-                          minHeight: metrics.chipH,
-                        },
-                        active && styles.frequencyButtonActive,
-                      ]}
-                      onPress={() =>
-                        setDraftParams((prev) => ({ ...prev, frequency: freq }))
-                      }
-                    >
-                      <Text style={[styles.frequencyText, { fontSize: 14 + fontAdjust }]}>
-                        {freq === 'weekly' ? 'Weekly' : 'Monthly'}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+              <Segmented
+                options={[
+                  { label: 'Weekly', value: 'weekly' },
+                  { label: 'Monthly', value: 'monthly' },
+                ]}
+                value={draftParams.frequency}
+                onChange={(value) => setDraftParams((prev) => ({ ...prev, frequency: value }))}
+              />
             )}
 
+            <View style={styles.fieldSwitcher}>
+              <Pressable
+                style={[styles.fieldChip, activeField === 'apy' && styles.fieldChipActive]}
+                onPress={() => handleSelectField('apy')}
+              >
+                <Text style={[styles.fieldChipText, activeField === 'apy' && styles.fieldChipTextActive]}>
+                  APY
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.fieldChip, activeField === 'years' && styles.fieldChipActive]}
+                onPress={() => handleSelectField('years')}
+              >
+                <Text style={[styles.fieldChipText, activeField === 'years' && styles.fieldChipTextActive]}>
+                  Years
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.fieldChip, activeField === 'initial' && styles.fieldChipActive]}
+                onPress={() => handleSelectField('initial')}
+              >
+                <Text style={[styles.fieldChipText, activeField === 'initial' && styles.fieldChipTextActive]}>
+                  Initial
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.fieldChip, activeField === 'amount' && styles.fieldChipActive]}
+                onPress={() => handleSelectField('amount')}
+              >
+                <Text style={[styles.fieldChipText, activeField === 'amount' && styles.fieldChipTextActive]}>
+                  Amount
+                </Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.activeFieldBox}>
+              <Text style={styles.activeFieldLabel}>
+                Editing {activeField === 'apy' ? 'APY' : activeField === 'years' ? 'Years' : activeField === 'initial' ? 'Initial' : 'Contribution'}
+              </Text>
+              <Text style={styles.activeFieldValue}>
+                {activeField === 'apy'
+                  ? `${draftApyText || '0'}%`
+                  : activeField === 'years'
+                  ? `${draftYearsText || '0'} years`
+                  : activeField === 'initial'
+                  ? formatCurrencyInput(draftInitialText)
+                  : formatCurrencyInput(draftAmountText)}
+              </Text>
+            </View>
             <Keypad
               onKeyPress={handleKeypadPress}
-              keyHeight={metrics.keyH}
-              gap={metrics.keyGap}
-              marginTop={metrics.gap}
-              fontSize={Math.max(20, 22 + fontAdjust)}
+              keyHeight={keypadHeight}
+              gap={10}
+              marginTop={12}
+              fontSize={18}
             />
-          </ScrollView>
-
-          <View
-            style={[
-              styles.sheetFooter,
-              { paddingTop: metrics.footerPad, paddingBottom: insets.bottom + 12 },
-            ]}
-          >
-            <Pressable
-              style={[
-                styles.simulateButton,
-                { paddingVertical: simulatePadY, borderRadius: Math.round(18 * scale) },
-              ]}
-              onPress={commitSimulation}
-            >
-              <Text style={[styles.simulateText, { fontSize: 16 + fontAdjust }]}>Simulate</Text>
+            <Pressable style={styles.sheetCta} onPress={commitSimulation}>
+              <Text style={styles.sheetCtaText}>Simulate</Text>
             </Pressable>
-          </View>
+          </ScrollView>
         </View>
       </BottomSheet>
-    </LinearGradient>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  background: {
+  root: {
     flex: 1,
+    backgroundColor: colors.background,
   },
   safe: {
     flex: 1,
+  },
+  scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 8,
+    paddingBottom: 28,
   },
-  apyPill: {
-    alignSelf: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: 'rgba(173, 198, 254, 0.16)',
-    marginBottom: 14,
+  screenTitle: {
+    color: colors.textPrimary,
+    fontFamily: typography.families.semibold,
+    fontSize: 16,
+    marginBottom: 12,
   },
-  apyText: {
-    color: COLORS.accent,
-    fontFamily: FONT_FAMILY,
-    fontSize: 12,
-    letterSpacing: 0.6,
+  heroCard: {
+    backgroundColor: colors.surface,
   },
-  balance: {
-    color: COLORS.textPrimary,
-    fontFamily: FONT_FAMILY,
-    fontSize: 44,
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  subtitle: {
-    color: COLORS.textSecondary,
-    fontFamily: FONT_FAMILY,
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  chartCard: {
-    padding: 16,
-    borderRadius: 32,
-    marginBottom: 18,
-  },
-  bottomSummary: {
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-    borderRadius: 30,
+  heroHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  summaryPrimary: {
-    color: COLORS.textPrimary,
-    fontFamily: FONT_FAMILY,
-    fontSize: 16,
+  heroLabel: {
+    color: colors.textSecondary,
+    fontFamily: typography.families.medium,
+    fontSize: 13,
   },
-  summarySecondary: {
-    color: COLORS.textSecondary,
-    fontFamily: FONT_FAMILY,
-    fontSize: 12,
-    marginTop: 2,
+  heroChip: {
+    backgroundColor: '#EDE2D6',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
-  editButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    backgroundColor: 'rgba(173, 198, 254, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(173, 198, 254, 0.2)',
-  },
-  editText: {
-    color: COLORS.textPrimary,
-    fontFamily: FONT_FAMILY,
+  heroChipText: {
+    color: colors.textSecondary,
+    fontFamily: typography.families.semibold,
     fontSize: 12,
   },
-  sheetBody: {
-    width: '100%',
+  heroValue: {
+    color: colors.textPrimary,
+    fontFamily: typography.families.bold,
+    fontSize: 42,
+    marginTop: 10,
   },
-  sheetContent: {
-    paddingBottom: 0,
+  heroSub: {
+    color: colors.textSecondary,
+    fontFamily: typography.families.medium,
+    fontSize: 13,
+    marginTop: 8,
+  },
+  chartCard: {
+    marginTop: 18,
+  },
+  chartTitle: {
+    color: colors.textSecondary,
+    fontFamily: typography.families.medium,
+    fontSize: 13,
+    marginBottom: 6,
+  },
+  tileRow: {
+    flexDirection: 'row',
+    marginTop: 16,
+  },
+  tileSpacer: {
+    width: 12,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    marginTop: 18,
+    alignItems: 'stretch',
+  },
+  actionTile: {
+    borderRadius: 22,
+    padding: 16,
+    backgroundColor: colors.surface,
+    shadowColor: colors.shadow,
+    shadowOpacity: 1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  actionTileMain: {
+    flex: 1,
+  },
+  actionTileSmall: {
+    width: 60,
+    marginLeft: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionTitle: {
+    color: colors.textPrimary,
+    fontFamily: typography.families.semibold,
+    fontSize: 14,
+  },
+  actionSub: {
+    color: colors.textSecondary,
+    fontFamily: typography.families.medium,
+    fontSize: 12,
+    marginTop: 6,
+  },
+  actionPlus: {
+    color: colors.textPrimary,
+    fontFamily: typography.families.bold,
+    fontSize: 24,
   },
   sheetHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  sheetWrapper: {
+    flex: 1,
+  },
+  sheetScroll: {
+    flex: 1,
+  },
+  sheetContent: {
+    paddingBottom: 28,
   },
   sheetTitle: {
-    color: COLORS.textPrimary,
-    fontFamily: FONT_FAMILY,
-    fontSize: 18,
+    color: colors.textPrimary,
+    fontFamily: typography.families.semibold,
+    fontSize: 16,
   },
   sheetClose: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: 'rgba(18, 20, 33, 0.65)',
-    borderWidth: 1,
-    borderColor: 'rgba(173, 198, 254, 0.18)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  closeText: {
-    color: COLORS.textPrimary,
-    fontFamily: FONT_FAMILY,
-    fontSize: 14,
-  },
-  sectionLabel: {
-    color: 'rgba(173, 198, 254, 0.6)',
-    fontFamily: FONT_FAMILY,
-    fontSize: 11,
-    letterSpacing: 1.2,
-  },
-  rateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(173, 198, 254, 0.22)',
-    backgroundColor: 'rgba(18, 20, 33, 0.7)',
-  },
-  rateInputText: {
-    flex: 1,
-    color: COLORS.textPrimary,
-    fontFamily: FONT_FAMILY,
-    fontSize: 22,
-  },
-  rateSuffix: {
-    color: COLORS.textSecondary,
-    fontFamily: FONT_FAMILY,
-    fontSize: 14,
-    marginLeft: 8,
-  },
-  rateChips: {
-    flexDirection: 'row',
-  },
-  rateChip: {
+    width: 28,
+    height: 28,
     borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(173, 198, 254, 0.18)',
-    backgroundColor: 'rgba(18, 20, 33, 0.6)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 8,
+    backgroundColor: '#EFE5DA',
   },
-  rateChipText: {
-    color: COLORS.textSecondary,
-    fontFamily: FONT_FAMILY,
-    fontSize: 13,
+  sheetCloseText: {
+    color: colors.textSecondary,
+    fontFamily: typography.families.semibold,
   },
-  amountDisplayWrap: {
-    borderRadius: 20,
+  sheetLabel: {
+    color: colors.textSecondary,
+    fontFamily: typography.families.medium,
+    fontSize: 12,
+    marginTop: 10,
+  },
+  sheetInput: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: 6,
     borderWidth: 1,
     borderColor: 'transparent',
   },
-  amountDisplay: {
-    color: COLORS.textPrimary,
-    fontFamily: FONT_FAMILY,
-    fontSize: 36,
-    textAlign: 'center',
+  sheetInputActive: {
+    borderColor: colors.softPeach,
+    backgroundColor: '#F8F0E4',
   },
-  activeField: {
-    borderColor: 'rgba(173, 198, 254, 0.6)',
-  },
-  frequencyRow: {
+  fieldSwitcher: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 14,
   },
-  frequencyButton: {
-    flex: 1,
-    borderRadius: 16,
+  fieldChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(173, 198, 254, 0.18)',
-    backgroundColor: 'rgba(18, 20, 33, 0.6)',
-    alignItems: 'center',
+    borderColor: 'transparent',
   },
-  frequencyButtonActive: {
-    backgroundColor: 'rgba(173, 198, 254, 0.2)',
+  fieldChipActive: {
+    borderColor: colors.softPeach,
+    backgroundColor: '#F8F0E4',
   },
-  frequencyText: {
-    color: COLORS.textSecondary,
-    fontFamily: FONT_FAMILY,
+  fieldChipText: {
+    color: colors.textSecondary,
+    fontFamily: typography.families.semibold,
+    fontSize: 12,
   },
-  sheetFooter: {
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(173, 198, 254, 0.1)',
+  fieldChipTextActive: {
+    color: colors.textPrimary,
   },
-  simulateButton: {
-    backgroundColor: COLORS.accent,
-    borderRadius: 18,
-    alignItems: 'center',
+  activeFieldBox: {
+    marginTop: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: '#F8F0E4',
+    borderWidth: 1,
+    borderColor: colors.softPeach,
   },
-  simulateText: {
-    color: COLORS.backgroundTop,
-    fontFamily: FONT_FAMILY,
+  activeFieldLabel: {
+    color: colors.textSecondary,
+    fontFamily: typography.families.medium,
+    fontSize: 12,
+  },
+  activeFieldValue: {
+    color: colors.textPrimary,
+    fontFamily: typography.families.semibold,
     fontSize: 16,
+    marginTop: 6,
+  },
+  sheetInputValue: {
+    color: colors.textPrimary,
+    fontFamily: typography.families.semibold,
+    fontSize: 16,
+  },
+  sheetCta: {
+    backgroundColor: colors.softPeach,
+    borderRadius: 18,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  sheetCtaText: {
+    color: colors.textPrimary,
+    fontFamily: typography.families.bold,
+    fontSize: 14,
   },
 });

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, TextStyle, View, ViewStyle } from 'react-native';
-import { COLORS, FONT_FAMILY } from '../lib/constants';
+import { COLORS, RADII, SPACING, TYPOGRAPHY } from '../lib/theme';
 
 type SegmentedOption<T extends string> = {
   label: string;
@@ -52,28 +52,29 @@ export const Segmented = <T extends string>({
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    padding: 6,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    padding: SPACING.s,
+    borderRadius: RADII.pill,
+    backgroundColor: COLORS.glass.fill,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.14)',
+    borderColor: COLORS.glass.stroke,
   },
   option: {
     flex: 1,
-    paddingVertical: 10,
+    paddingVertical: SPACING.s,
     alignItems: 'center',
-    borderRadius: 14,
+    borderRadius: RADII.pill,
   },
   optionActive: {
-    backgroundColor: 'rgba(173, 198, 254, 0.2)',
+    backgroundColor: 'rgba(159, 182, 255, 0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(159, 182, 255, 0.35)',
   },
   label: {
-    color: COLORS.textSecondary,
+    color: COLORS.text.muted,
     fontSize: 14,
-    fontFamily: FONT_FAMILY,
+    fontFamily: TYPOGRAPHY.families.semibold,
   },
   labelActive: {
-    color: COLORS.textPrimary,
-    fontFamily: FONT_FAMILY,
+    color: COLORS.text.primary,
   },
 });

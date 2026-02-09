@@ -10,9 +10,8 @@ import {
   ViewStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BlurView } from 'expo-blur';
-import { COLORS } from '../lib/constants';
-import { Glass } from './Glass';
+import { colors } from '../src/theme/colors';
+import { RADII, SPACING } from '../lib/theme';
 
 type BottomSheetProps = {
   visible: boolean;
@@ -24,11 +23,12 @@ type BottomSheetProps = {
 
 export const BottomSheet = ({ visible, onClose, children, style, maxHeight }: BottomSheetProps) => {
   const [rendered, setRendered] = useState(visible);
-  const translateY = useRef(new Animated.Value(60)).current;
+  const translateY = useRef(new Animated.Value(70)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
-  const sheetMaxHeight = maxHeight ?? height * 0.88;
+  const sheetMaxHeight = maxHeight ?? height * 0.92;
+  const sheetMinHeight = Math.min(sheetMaxHeight, Math.round(height * 0.7));
 
   useEffect(() => {
     if (visible) {
@@ -36,7 +36,7 @@ export const BottomSheet = ({ visible, onClose, children, style, maxHeight }: Bo
       Animated.parallel([
         Animated.timing(translateY, {
           toValue: 0,
-          duration: 260,
+          duration: 280,
           useNativeDriver: true,
         }),
         Animated.timing(opacity, {
@@ -48,7 +48,7 @@ export const BottomSheet = ({ visible, onClose, children, style, maxHeight }: Bo
     } else {
       Animated.parallel([
         Animated.timing(translateY, {
-          toValue: 60,
+          toValue: 70,
           duration: 200,
           useNativeDriver: true,
         }),
@@ -71,8 +71,7 @@ export const BottomSheet = ({ visible, onClose, children, style, maxHeight }: Bo
 
   return (
     <Modal transparent visible={rendered} animationType="none">
-      <View style={styles.backdrop}>
-        <BlurView intensity={25} tint="dark" style={StyleSheet.absoluteFillObject} />
+      <View style={styles.backdrop} pointerEvents="box-none">
         <Pressable
           style={styles.overlay}
           onPress={() => {
@@ -83,12 +82,18 @@ export const BottomSheet = ({ visible, onClose, children, style, maxHeight }: Bo
         <Animated.View
           style={[
             styles.sheetWrapper,
-            { opacity, transform: [{ translateY }], paddingBottom: 16 + insets.bottom },
+            { opacity, transform: [{ translateY }], paddingBottom: SPACING.l + insets.bottom },
           ]}
         >
-          <Glass style={[styles.sheet, { maxHeight: sheetMaxHeight }, style]} intensity={40}>
+          <View
+            style={[
+              styles.sheet,
+              { maxHeight: sheetMaxHeight, minHeight: sheetMinHeight, width: '100%' },
+              style,
+            ]}
+          >
             {children}
-          </Glass>
+          </View>
         </Animated.View>
       </View>
     </Modal>
@@ -102,16 +107,22 @@ const styles = StyleSheet.create({
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(18, 20, 33, 0.6)',
+    backgroundColor: 'rgba(60, 50, 42, 0.45)',
+    zIndex: 1,
   },
   sheetWrapper: {
-    paddingHorizontal: 18,
+    paddingHorizontal: SPACING.xl,
+    zIndex: 2,
   },
   sheet: {
-    padding: 20,
-    borderRadius: 30,
-    borderColor: 'rgba(173, 198, 254, 0.18)',
-    backgroundColor: COLORS.glassFill,
+    padding: SPACING.xl,
+    borderRadius: RADII.card,
+    backgroundColor: colors.surface,
     overflow: 'hidden',
+    shadowColor: colors.shadow,
+    shadowOpacity: 1,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
   },
 });

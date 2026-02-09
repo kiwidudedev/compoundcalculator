@@ -7,9 +7,9 @@ import {
   Text,
   View,
 } from 'react-native';
-import Svg, { Line, Rect } from 'react-native-svg';
+import Svg, { Line, Rect, Text as SvgText } from 'react-native-svg';
 import { YearPoint } from '../lib/simulate';
-import { COLORS, FONT_FAMILY } from '../lib/constants';
+import { COLORS, SPACING, TYPOGRAPHY } from '../lib/theme';
 import { formatCurrency } from '../lib/format';
 
 type ChartProps = {
@@ -17,12 +17,29 @@ type ChartProps = {
   selectedYear: number | null;
   onSelectYear: (yearIndex: number) => void;
   height?: number;
+  endLabel?: string;
 };
 
-const tooltipWidth = 170;
-const tooltipHeight = 64;
+const tooltipWidth = 180;
+const tooltipHeight = 70;
 
-export const Chart = ({ data, selectedYear, onSelectYear, height = 210 }: ChartProps) => {
+const formatShortCurrency = (value: number) => {
+  if (value >= 1_000_000) {
+    return `$${(value / 1_000_000).toFixed(1)}M`;
+  }
+  if (value >= 1000) {
+    return `$${Math.round(value / 1000)}K`;
+  }
+  return `$${Math.round(value)}`;
+};
+
+export const Chart = ({
+  data,
+  selectedYear,
+  onSelectYear,
+  height = 240,
+  endLabel = '30Y',
+}: ChartProps) => {
   const [width, setWidth] = useState(0);
   const tooltipOpacity = useRef(new Animated.Value(0)).current;
   const tooltipX = useRef(new Animated.Value(0)).current;
@@ -54,21 +71,20 @@ export const Chart = ({ data, selectedYear, onSelectYear, height = 210 }: ChartP
   }, [safeData]);
 
   const chart = useMemo(() => {
-    const labelWidth = 0;
-    const chartPadding = 8;
-    const topPadding = 16;
+    const labelWidth = 52;
+    const chartPadding = 6;
+    const topPadding = 18;
     const bottomPadding = 10;
     const plotWidth = Math.max(width - labelWidth - chartPadding * 2, 0);
     const count = safeData.length;
-    const minBarWidth = 2;
-    const maxSpacing = 8;
+    const minBarWidth = 4;
+    const maxSpacing = 10;
     let spacing = maxSpacing;
     if (count > 1) {
       const maxSpacingToFit = Math.floor((plotWidth - minBarWidth * count) / (count - 1));
       spacing = Math.max(2, Math.min(maxSpacing, maxSpacingToFit));
     }
-    const rawBarWidth =
-      count > 1 ? (plotWidth - spacing * (count - 1)) / count : plotWidth;
+    const rawBarWidth = count > 1 ? (plotWidth - spacing * (count - 1)) / count : plotWidth;
     const barWidth = Math.max(minBarWidth, rawBarWidth);
 
     return {
@@ -126,11 +142,11 @@ export const Chart = ({ data, selectedYear, onSelectYear, height = 210 }: ChartP
         onMoveShouldSetPanResponder: () => true,
         onPanResponderGrant: (event) => {
           showTooltip();
-          updateIndexFromX(event.nativeEvent.locationX);
+          updateIndexFromX(event.nativeEvent.locationX - chart.plotLeft);
         },
         onPanResponderMove: (event) => {
           showTooltip();
-          updateIndexFromX(event.nativeEvent.locationX);
+          updateIndexFromX(event.nativeEvent.locationX - chart.plotLeft);
         },
         onPanResponderRelease: () => {
           hideTooltip();
@@ -139,7 +155,7 @@ export const Chart = ({ data, selectedYear, onSelectYear, height = 210 }: ChartP
           hideTooltip();
         },
       }),
-    [chart.plotWidth, safeData.length],
+    [chart.plotLeft, chart.plotWidth, safeData.length],
   );
 
   useEffect(() => {
@@ -156,19 +172,19 @@ export const Chart = ({ data, selectedYear, onSelectYear, height = 210 }: ChartP
       chart.plotLeft + safeSelectedYear * (chart.barWidth + chart.spacing) + chart.barWidth / 2;
     const y = chart.plotTop + (height - totalHeight);
 
-    let targetX = x + chart.barWidth / 2 + 8;
+    let targetX = x + chart.barWidth / 2 + 10;
     const minX = chart.plotLeft;
     const maxX = width - chart.chartPadding - tooltipWidth;
     if (targetX + tooltipWidth > width - chart.chartPadding) {
-      targetX = x - tooltipWidth - 8;
+      targetX = x - tooltipWidth - 10;
     }
     targetX = Math.max(minX, Math.min(maxX, targetX));
 
-    let targetY = y - tooltipHeight - 8;
+    let targetY = y - tooltipHeight - 10;
     const minY = chart.plotTop;
     const maxY = chart.plotTop + height - tooltipHeight;
     if (targetY < minY) {
-      targetY = y + 8;
+      targetY = y + 10;
     }
     targetY = Math.max(minY, Math.min(maxY, targetY));
 
@@ -195,6 +211,7 @@ export const Chart = ({ data, selectedYear, onSelectYear, height = 210 }: ChartP
           <Svg width={width} height={chart.svgHeight}>
             {[0, 1, 2, 3, 4].map((index) => {
               const y = chart.topPadding + height - (height * index) / 4;
+              const value = (maxValue * index) / 4;
               return (
                 <React.Fragment key={`grid-${index}`}>
                   <Line
@@ -202,9 +219,20 @@ export const Chart = ({ data, selectedYear, onSelectYear, height = 210 }: ChartP
                     x2={width - chart.chartPadding}
                     y1={y}
                     y2={y}
-                    stroke="rgba(255,255,255,0.05)"
+                    stroke={COLORS.chart.grid}
                     strokeWidth={1}
+                    strokeDasharray="6 6"
                   />
+                  <SvgText
+                    x={chart.labelWidth - 6}
+                    y={y + 4}
+                    fill={COLORS.text.muted}
+                    fontSize={11}
+                    fontFamily={TYPOGRAPHY.families.semibold}
+                    textAnchor="end"
+                  >
+                    {formatShortCurrency(value)}
+                  </SvgText>
                 </React.Fragment>
               );
             })}
@@ -223,7 +251,7 @@ export const Chart = ({ data, selectedYear, onSelectYear, height = 210 }: ChartP
                 }
                 y1={chart.plotTop}
                 y2={chart.plotTop + height}
-                stroke="rgba(255,255,255,0.08)"
+                stroke="rgba(255,255,255,0.18)"
                 strokeWidth={1}
               />
             )}
@@ -245,6 +273,7 @@ export const Chart = ({ data, selectedYear, onSelectYear, height = 210 }: ChartP
                 index * (chart.barWidth + chart.spacing) -
                 (isSelected ? 3 : 0);
               const y = chart.plotTop + (height - totalHeight);
+              const radius = 6;
 
               return (
                 <React.Fragment key={`bar-${point.yearIndex}`}>
@@ -253,20 +282,20 @@ export const Chart = ({ data, selectedYear, onSelectYear, height = 210 }: ChartP
                     y={y + earnedHeight}
                     width={barWidth}
                     height={addedHeight}
-                    rx={8}
-                    ry={8}
-                    fill={COLORS.added}
-                    fillOpacity={isSelected ? 1 : 0.86}
+                    rx={radius}
+                    ry={radius}
+                    fill={COLORS.chart.contribution}
+                    fillOpacity={isSelected ? 1 : 0.9}
                   />
                   <Rect
                     x={x}
                     y={y}
                     width={barWidth}
                     height={earnedHeight}
-                    rx={8}
-                    ry={8}
-                    fill={COLORS.earned}
-                    fillOpacity={isSelected ? 1 : 0.92}
+                    rx={radius}
+                    ry={radius}
+                    fill={COLORS.chart.interest}
+                    fillOpacity={isSelected ? 1 : 0.7}
                   />
                 </React.Fragment>
               );
@@ -299,7 +328,7 @@ export const Chart = ({ data, selectedYear, onSelectYear, height = 210 }: ChartP
             >
               <Text style={styles.tooltipYear}>Year {selectedPoint.yearIndex}</Text>
               <View style={styles.tooltipRow}>
-                <Text style={styles.tooltipLabel}>Added</Text>
+                <Text style={styles.tooltipLabel}>Contrib</Text>
                 <Text style={styles.tooltipValue}>
                   {formatCurrency(selectedPoint.totalAddedToDate)}
                 </Text>
@@ -314,6 +343,11 @@ export const Chart = ({ data, selectedYear, onSelectYear, height = 210 }: ChartP
           )}
         </View>
       )}
+      <View style={styles.bottomLabels}>
+        <Text style={styles.bottomLabel}>1Y</Text>
+        <Text style={styles.bottomLabelCenter}>Future Projection</Text>
+        <Text style={styles.bottomLabel}>{endLabel}</Text>
+      </View>
     </View>
   );
 };
@@ -328,20 +362,20 @@ const styles = StyleSheet.create({
   tooltip: {
     position: 'absolute',
     width: tooltipWidth,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: 'rgba(6, 10, 16, 0.82)',
+    paddingHorizontal: SPACING.l,
+    paddingVertical: SPACING.m,
+    backgroundColor: 'rgba(8, 12, 22, 0.86)',
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
-    shadowColor: '#8AB9FF',
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+    shadowColor: COLORS.accent.glow,
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
     shadowOffset: { width: 0, height: 6 },
   },
   tooltipYear: {
-    color: 'rgba(255,255,255,0.55)',
-    fontFamily: FONT_FAMILY,
+    color: COLORS.text.muted,
+    fontFamily: TYPOGRAPHY.families.semibold,
     fontSize: 12,
     marginBottom: 6,
   },
@@ -352,13 +386,30 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   tooltipLabel: {
-    color: 'rgba(255,255,255,0.7)',
-    fontFamily: FONT_FAMILY,
-    fontSize: 16,
+    color: COLORS.text.secondary,
+    fontFamily: TYPOGRAPHY.families.semibold,
+    fontSize: 15,
   },
   tooltipValue: {
-    color: '#FFFFFF',
-    fontFamily: FONT_FAMILY,
-    fontSize: 16,
+    color: COLORS.text.primary,
+    fontFamily: TYPOGRAPHY.families.bold,
+    fontSize: 15,
+  },
+  bottomLabels: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: SPACING.s,
+    paddingHorizontal: SPACING.s,
+  },
+  bottomLabel: {
+    color: COLORS.text.muted,
+    fontFamily: TYPOGRAPHY.families.semibold,
+    fontSize: 12,
+  },
+  bottomLabelCenter: {
+    color: COLORS.text.secondary,
+    fontFamily: TYPOGRAPHY.families.semibold,
+    fontSize: 12,
   },
 });
