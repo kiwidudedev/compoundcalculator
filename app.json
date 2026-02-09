@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "Compound Growth",
+    "slug": "compound-growth",
+    "scheme": "compoundgrowth",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font"
+    ]
+  }
+}
